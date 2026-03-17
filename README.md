@@ -1,1 +1,1 @@
-not <b>bold text</>
+not <b>bold text</b>
