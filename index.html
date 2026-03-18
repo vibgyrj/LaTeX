@@ -1,0 +1,597 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XeLaTeX Online Compiler</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #ffffff;
+    --surface:  #f7f7f8;
+    --surface2: #efefef;
+    --border:   #e0e0e4;
+    --border2:  #d0d0d8;
+    --accent:   #2563eb;
+    --accent-h: #1d4ed8;
+    --accent2:  #7c3aed;
+    --text:     #1a1a2e;
+    --muted:    #6b7280;
+    --error:    #dc2626;
+    --success:  #16a34a;
+    --warn:     #d97706;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Inter', sans-serif;
+    --radius:   8px;
+    --shadow:   0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); height: 100vh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 18px; border-bottom: 1px solid var(--border);
+    background: var(--bg); flex-shrink: 0; gap: 10px; flex-wrap: wrap;
+    box-shadow: var(--shadow);
+  }
+
+  .logo {
+    font-size: 1.05rem; font-weight: 700; color: var(--accent);
+    display: flex; align-items: center; gap: 8px; letter-spacing: -0.02em;
+  }
+  .logo-badge {
+    font-size: 0.6rem; background: var(--accent2); color: #fff;
+    padding: 2px 7px; border-radius: 20px; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+
+  .header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  select {
+    background: var(--surface); border: 1px solid var(--border2);
+    color: var(--text); font-family: var(--mono); font-size: 0.72rem;
+    padding: 5px 10px; border-radius: var(--radius); outline: none; cursor: pointer;
+  }
+  select:focus { border-color: var(--accent); }
+
+  .main-name-wrap {
+    display: flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 0.7rem; color: var(--muted);
+  }
+  .main-name-wrap input {
+    background: var(--surface); border: 1px solid var(--border2); color: var(--text);
+    font-family: var(--mono); font-size: 0.7rem; padding: 5px 8px;
+    border-radius: var(--radius); outline: none; width: 130px;
+  }
+  .main-name-wrap input:focus { border-color: var(--accent); }
+
+  .status {
+    font-family: var(--mono); font-size: 0.68rem; padding: 4px 12px;
+    border-radius: 20px; background: var(--surface); border: 1px solid var(--border);
+    color: var(--muted); transition: all 0.25s; white-space: nowrap;
+  }
+  .status.running { color: var(--warn);    border-color: #fbbf24; background: #fffbeb; }
+  .status.success { color: var(--success); border-color: #86efac; background: #f0fdf4; }
+  .status.error   { color: var(--error);   border-color: #fca5a5; background: #fef2f2; }
+
+  .btn {
+    border: none; padding: 7px 14px; border-radius: var(--radius);
+    font-family: var(--sans); font-weight: 600; font-size: 0.76rem;
+    cursor: pointer; transition: background 0.15s, transform 0.1s, opacity 0.15s;
+    white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .btn:active  { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-compile  { background: var(--accent);  color: #fff; }
+  .btn-compile:hover:not(:disabled) { background: var(--accent-h); }
+
+  .btn-dl {
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--border2); display: none;
+  }
+  .btn-dl:hover { background: var(--surface2); color: var(--text); }
+  .btn-dl.show  { display: inline-flex; }
+
+  .shortcut { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+
+  /* ── WORKSPACE ── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 200px 1fr 1fr;
+    flex: 1; overflow: hidden;
+    transition: grid-template-columns 0.2s ease;
+  }
+  .workspace.files-collapsed {
+    grid-template-columns: 28px 1fr 1fr;
+  }
+  .workspace.files-collapsed .file-panel > *:not(.pane-header) { display: none; }
+  .workspace.files-collapsed .pane-header .panel-title { display: none; }
+  .workspace.files-collapsed .pane-header { justify-content: center; padding: 8px 4px; }
+
+  /* ── FILE PANEL ── */
+  .file-panel {
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .pane-header {
+    padding: 8px 12px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.63rem; font-family: var(--mono); color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.07em;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .collapse-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 0.72rem; padding: 0 2px;
+    line-height: 1; transition: color 0.15s; flex-shrink: 0;
+  }
+  .collapse-btn:hover { color: var(--accent); }
+
+  .drop-zone {
+    margin: 8px; border: 1.5px dashed var(--border2);
+    border-radius: var(--radius); padding: 12px 8px; text-align: center;
+    cursor: pointer; transition: border-color 0.2s, background 0.2s;
+    font-size: 0.67rem; color: var(--muted); font-family: var(--mono); flex-shrink: 0;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent); background: #eff6ff; color: var(--accent);
+  }
+  .drop-zone svg { display: block; margin: 0 auto 5px; opacity: 0.45; }
+  #fileInput { display: none; }
+
+  .file-list { flex: 1; overflow-y: auto; padding: 3px 5px; }
+
+  .file-item {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 8px; border-radius: 6px; cursor: pointer;
+    font-family: var(--mono); font-size: 0.68rem; color: var(--muted);
+    transition: background 0.12s; user-select: none;
+  }
+  .file-item:hover { background: var(--surface2); color: var(--text); }
+  .file-item.active { background: #dbeafe; color: var(--accent); border-left: 2px solid var(--accent); padding-left: 6px; }
+  .file-item.main-file .ext { background: #dbeafe; color: var(--accent); }
+  .file-item .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-item .del {
+    opacity: 0; font-size: 0.62rem; color: var(--error);
+    padding: 2px 4px; border-radius: 3px; transition: opacity 0.12s; flex-shrink: 0;
+  }
+  .file-item:hover .del { opacity: 1; }
+  .file-item .ext {
+    font-size: 0.57rem; padding: 1px 4px; border-radius: 3px;
+    background: var(--surface2); color: var(--muted); white-space: nowrap; flex-shrink: 0;
+  }
+
+  .no-files { padding: 12px 8px; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); text-align: center; }
+  .file-hint { padding: 6px 10px 8px; font-family: var(--mono); font-size: 0.6rem; color: var(--muted); border-top: 1px solid var(--border); flex-shrink: 0; line-height: 1.6; }
+
+  /* ── EDITOR ── */
+  .editor-pane { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+
+  textarea {
+    flex: 1; background: #fff; color: var(--text);
+    font-family: var(--mono); font-size: 0.8rem; line-height: 1.75;
+    padding: 18px; border: none; outline: none; resize: none; tab-size: 2;
+  }
+  textarea::selection { background: #bfdbfe; }
+
+  /* ── PREVIEW ── */
+  .preview-pane { display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
+
+  iframe { flex: 1; border: none; background: #fff; }
+
+  .log-box {
+    display: none; flex: 1; overflow-y: auto;
+    padding: 16px 18px; font-family: var(--mono); font-size: 0.72rem;
+    line-height: 1.7; color: var(--error); white-space: pre-wrap; word-break: break-all;
+    background: #fff;
+  }
+  .log-box.visible { display: block; }
+
+  /* ── LOG TOOLBAR ── */
+  .log-toolbar {
+    display: none; align-items: center; justify-content: flex-end;
+    padding: 6px 10px; border-top: 1px solid var(--border);
+    background: var(--surface); flex-shrink: 0; gap: 6px;
+  }
+  .log-toolbar.visible { display: flex; }
+
+  .btn-log-dl {
+    background: var(--surface2); color: var(--muted);
+    border: 1px solid var(--border2); font-size: 0.7rem;
+    padding: 5px 11px;
+  }
+  .btn-log-dl:hover { background: var(--border); color: var(--text); }
+
+  .placeholder {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--muted); font-size: 0.8rem; gap: 10px; font-family: var(--mono);
+  }
+  .placeholder svg { opacity: 0.2; }
+
+  .info-txt { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    XeLaTeX Compiler
+    <span class="logo-badge">Online</span>
+  </div>
+  <div class="header-right">
+    <select id="compiler" title="LaTeX compiler">
+      <option value="xelatex" selected>xelatex</option>
+      <option value="pdflatex">pdflatex</option>
+      <option value="lualatex">lualatex</option>
+    </select>
+    <div class="main-name-wrap">
+      <span>main:</span>
+      <input type="text" id="mainName" value="doc.tex">
+    </div>
+    <span class="shortcut">Ctrl+Enter</span>
+    <div class="status" id="status">idle</div>
+    <button class="btn btn-dl" id="downloadPdfBtn">&#8595; PDF</button>
+    <button class="btn btn-compile" id="compileBtn" onclick="compile()">&#9654; Compile</button>
+  </div>
+</header>
+
+<div class="workspace" id="workspace">
+
+  <!-- FILE PANEL -->
+  <div class="file-panel">
+    <div class="pane-header">
+      <span class="panel-title">files &nbsp;<span id="fileCount">0</span></span>
+      <button class="collapse-btn" id="collapseBtn" title="Toggle file panel" onclick="toggleFilePanel()">&#9664;</button>
+    </div>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      Drop files here<br>or click to browse
+    </div>
+    <input type="file" id="fileInput" multiple
+      accept=".tex,.sty,.cls,.bib,.png,.jpg,.jpeg,.eps,.tikz,.def,.cfg,.ldf,.bbx,.cbx">
+    <div class="file-list" id="fileList">
+      <div class="no-files">No support files uploaded</div>
+    </div>
+    <div class="file-hint">Click file &#8594; load in editor<br>&#10005; &#8594; remove from list</div>
+  </div>
+
+  <!-- EDITOR -->
+  <div class="editor-pane">
+    <div class="pane-header">
+      <span id="editorLabel">editor &#8212; doc.tex</span>
+      <span class="info-txt" id="lineCount">0 lines</span>
+    </div>
+    <textarea id="editor" spellcheck="false"></textarea>
+  </div>
+
+  <!-- PREVIEW -->
+  <div class="preview-pane">
+    <div class="pane-header">
+      <span id="previewLabel">preview</span>
+      <span class="info-txt" id="compileTime"></span>
+    </div>
+    <div class="placeholder" id="placeholder">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      <span>PDF preview appears here</span>
+    </div>
+    <iframe id="preview" style="display:none;"></iframe>
+    <div class="log-box" id="logBox"></div>
+    <div class="log-toolbar" id="logToolbar">
+      <button class="btn btn-log-dl" id="downloadLogBtn">&#8595; Download .log</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API_URL = 'https://latex.ytotech.com/builds/sync';
+
+// ── state ─────────────────────────────────────────────
+const uploadedFiles = {};
+let activeFile  = null;
+let lastPdfBlob = null;
+let lastLogText = null;
+let lastLogName = 'output.log';
+let filesPanelOpen = true;
+
+// ── DOM ───────────────────────────────────────────────
+const editor         = document.getElementById('editor');
+const preview        = document.getElementById('preview');
+const logBox         = document.getElementById('logBox');
+const logToolbar     = document.getElementById('logToolbar');
+const statusEl       = document.getElementById('status');
+const compileBtn     = document.getElementById('compileBtn');
+const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+const downloadLogBtn = document.getElementById('downloadLogBtn');
+const placeholder    = document.getElementById('placeholder');
+const lineCount      = document.getElementById('lineCount');
+const compileTime    = document.getElementById('compileTime');
+const previewLabel   = document.getElementById('previewLabel');
+const editorLabel    = document.getElementById('editorLabel');
+const mainNameEl     = document.getElementById('mainName');
+const compilerEl     = document.getElementById('compiler');
+const fileListEl     = document.getElementById('fileList');
+const fileCountEl    = document.getElementById('fileCount');
+const dropZone       = document.getElementById('dropZone');
+const fileInput      = document.getElementById('fileInput');
+const workspace      = document.getElementById('workspace');
+const collapseBtn    = document.getElementById('collapseBtn');
+
+// ── collapse ──────────────────────────────────────────
+function toggleFilePanel() {
+  filesPanelOpen = !filesPanelOpen;
+  workspace.classList.toggle('files-collapsed', !filesPanelOpen);
+  collapseBtn.innerHTML = filesPanelOpen ? '&#9664;' : '&#9654;';
+  collapseBtn.title = filesPanelOpen ? 'Collapse file panel' : 'Expand file panel';
+}
+
+// ── default template ──────────────────────────────────
+editor.value = `\\documentclass{article}
+\\usepackage{fontspec}
+\\usepackage{amsmath}
+
+
+\\title{LaTeX Online Compiler}
+\\author{Your Name}
+\\date{\\today}
+
+\\begin{document}
+\\maketitle
+
+\\section{Introduction}
+This document is compiled using \\textbf{XeLaTeX} via a free online API.
+
+\\section{Math Example}
+A well-known identity:
+\\[
+  e^{i\\pi} + 1 = 0
+\\]
+
+% To include another .tex file, upload it via the file panel and use:
+% \\input{filename}
+
+\\end{document}`;
+updateLineCount();
+
+// ── editor events ─────────────────────────────────────
+editor.addEventListener('input', () => {
+  updateLineCount();
+  if (activeFile && uploadedFiles[activeFile])
+    uploadedFiles[activeFile].content = editor.value;
+});
+
+editor.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); compile(); }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart;
+    editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(editor.selectionEnd);
+    editor.selectionStart = editor.selectionEnd = s + 2;
+  }
+});
+
+function updateLineCount() {
+  lineCount.textContent = editor.value.split('\n').length + ' lines';
+}
+
+// ── file upload ───────────────────────────────────────
+fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
+
+function addFiles(fileObjs) {
+  const isText = name => /\.(tex|sty|cls|bib|tikz|def|cfg|ldf|bbx|cbx|txt)$/i.test(name);
+  for (const f of fileObjs) {
+    if (isText(f.name)) {
+      const r = new FileReader();
+      r.onload = ev => {
+        uploadedFiles[f.name] = { file: f, content: ev.target.result };
+        if (f.name.endsWith('.tex') && mainNameEl.value === 'doc.tex')
+          mainNameEl.value = f.name;
+        renderFileList();
+      };
+      r.readAsText(f);
+    } else {
+      uploadedFiles[f.name] = { file: f, content: null };
+      renderFileList();
+    }
+  }
+}
+
+function loadFileInEditor(name) {
+  const entry = uploadedFiles[name];
+  if (!entry) return;
+  if (entry.content === null) { alert(`"${name}" is a binary file and cannot be edited as text.`); return; }
+  if (activeFile && uploadedFiles[activeFile])
+    uploadedFiles[activeFile].content = editor.value;
+  activeFile = name;
+  editor.value = entry.content;
+  editorLabel.textContent = 'editor \u2014 ' + name;
+  updateLineCount();
+  renderFileList();
+  editor.focus();
+}
+
+function removeFile(name, event) {
+  event.stopPropagation();
+  delete uploadedFiles[name];
+  if (activeFile === name) { activeFile = null; editorLabel.textContent = 'editor \u2014 doc.tex'; }
+  renderFileList();
+}
+
+function renderFileList() {
+  const names = Object.keys(uploadedFiles);
+  fileCountEl.textContent = names.length;
+  if (!names.length) { fileListEl.innerHTML = '<div class="no-files">No support files uploaded</div>'; return; }
+  fileListEl.innerHTML = names.map(name => {
+    const ext      = name.includes('.') ? name.split('.').pop() : '?';
+    const isMain   = name === mainNameEl.value;
+    const isActive = name === activeFile;
+    const isBin    = uploadedFiles[name].content === null;
+    return `<div class="file-item ${isMain?'main-file':''} ${isActive?'active':''}"
+                 onclick="loadFileInEditor('${name}')">
+      <span class="ext">.${ext}</span>
+      <span class="fname" title="${name}">${name}</span>
+      ${isBin ? '<span style="font-size:0.57rem;color:var(--muted)">bin</span>' : ''}
+      <span class="del" onclick="removeFile('${name}',event)" title="Remove">\u2715</span>
+    </div>`;
+  }).join('');
+}
+mainNameEl.addEventListener('input', renderFileList);
+
+// ── compile ───────────────────────────────────────────
+async function compile() {
+  if (activeFile && uploadedFiles[activeFile])
+    uploadedFiles[activeFile].content = editor.value;
+
+  const source = editor.value.trim();
+  if (!source) return;
+
+  compileBtn.disabled = true;
+  downloadPdfBtn.classList.remove('show');
+  logBox.classList.remove('visible');
+  logToolbar.classList.remove('visible');
+  preview.style.display = 'none';
+  placeholder.style.display = 'none';
+  lastPdfBlob = null; lastLogText = null;
+  compileTime.textContent = '';
+  setStatus('running', '\u2026 compiling');
+
+  const resources = [{ main: true, content: source }];
+
+  for (const [name, entry] of Object.entries(uploadedFiles)) {
+    if (entry.content !== null) {
+      resources.push({ path: name, content: entry.content });
+    }
+  }
+
+  const binaryEntries = Object.entries(uploadedFiles).filter(([,e]) => e.content === null);
+  await Promise.all(binaryEntries.map(([name, entry]) =>
+    new Promise(res => {
+      const r = new FileReader();
+      r.onload = ev => {
+        const b64 = ev.target.result.split(',')[1];
+        resources.push({ path: name, content: b64, encoding: 'base64' });
+        res();
+      };
+      r.readAsDataURL(entry.file);
+    })
+  ));
+
+  const body = { compiler: compilerEl.value, resources };
+  const t0 = performance.now();
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    compileTime.textContent = elapsed + 's';
+
+    const logUrl = res.headers.get('X-Compile-Log') || res.headers.get('x-compile-log');
+
+    if (res.ok) {
+      lastPdfBlob = await res.blob();
+      preview.src = URL.createObjectURL(lastPdfBlob) + '#toolbar=1&view=FitH';
+      preview.style.display = 'block';
+      setStatus('success', '\u2713 success');
+      previewLabel.textContent = 'preview \u2014 output.pdf';
+      downloadPdfBtn.classList.add('show');
+
+      if (logUrl) {
+        fetch(logUrl).then(r => r.text()).then(t => {
+          lastLogText = t;
+          lastLogName = 'output.log';
+          logToolbar.classList.add('visible');
+        }).catch(() => {});
+      }
+
+    } else {
+      const ct = res.headers.get('content-type') || '';
+      let errText = '';
+      if (ct.includes('application/json')) {
+        const data = await res.json();
+        errText = JSON.stringify(data, null, 2);
+      } else {
+        errText = await res.text();
+      }
+      lastLogText = errText;
+      lastLogName = 'error.log';
+      logBox.textContent = errText || 'Compilation failed \u2014 no log returned.';
+      logBox.classList.add('visible');
+      logToolbar.classList.add('visible');
+      setStatus('error', '\u2717 error');
+      previewLabel.textContent = 'compile log';
+    }
+
+  } catch (err) {
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    compileTime.textContent = elapsed + 's';
+    lastLogText = `Network error: ${err.message}\n\nPossible causes:\n\u2022 No internet connection\n\u2022 API is temporarily down (latex.ytotech.com)\n\u2022 CORS issue in browser`;
+    lastLogName = 'error.log';
+    logBox.textContent = '\u26a0 ' + lastLogText;
+    logBox.classList.add('visible');
+    logToolbar.classList.add('visible');
+    setStatus('error', '\u2717 network error');
+    previewLabel.textContent = 'error';
+  }
+
+  compileBtn.disabled = false;
+}
+
+// ── downloads ─────────────────────────────────────────
+downloadPdfBtn.addEventListener('click', () => {
+  if (!lastPdfBlob) return;
+  triggerDownload(lastPdfBlob, mainNameEl.value.replace('.tex', '') + '.pdf');
+});
+downloadLogBtn.addEventListener('click', () => {
+  if (!lastLogText) return;
+  triggerDownload(new Blob([lastLogText], {type:'text/plain'}), lastLogName);
+});
+
+function triggerDownload(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+function setStatus(cls, text) {
+  statusEl.className = 'status ' + cls;
+  statusEl.textContent = text;
+}
+</script>
+</body>
+</html>
