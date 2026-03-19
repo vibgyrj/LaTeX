@@ -1,10 +1,14 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>XeLaTeX Online Compiler</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- JSZip for ZIP download -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -100,7 +104,68 @@
   .btn-dl:hover { background: var(--surface2); color: var(--text); }
   .btn-dl.show  { display: inline-flex; }
 
+  /* ── ZIP BUTTON ── */
+  .btn-zip {
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--border2); display: none;
+    padding: 6px 10px;
+  }
+  .btn-zip:hover { background: var(--surface2); color: var(--text); }
+  .btn-zip.show  { display: inline-flex; }
+  .btn-zip svg   { flex-shrink: 0; }
+
   .shortcut { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+
+  /* ── GOOGLE LOGIN BUTTON ── */
+  .btn-google {
+    background: none; border: 1px solid var(--border2);
+    cursor: pointer; border-radius: 50%; width: 30px; height: 30px;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; transition: border-color 0.15s, background 0.15s;
+    position: relative; flex-shrink: 0;
+  }
+  .btn-google:hover { border-color: var(--accent); background: #eff6ff; }
+  .btn-google .g-avatar {
+    width: 22px; height: 22px; border-radius: 50%;
+    object-fit: cover; display: none;
+  }
+  .btn-google.signed-in .g-avatar  { display: block; }
+  .btn-google.signed-in .g-icon    { display: none; }
+
+  /* ── GOOGLE DROPDOWN ── */
+  .g-dropdown {
+    display: none; position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    min-width: 210px; z-index: 999; overflow: hidden;
+  }
+  .g-dropdown.open { display: block; }
+  .g-dropdown-user {
+    display: flex; align-items: center; gap: 9px;
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    font-size: 0.72rem;
+  }
+  .g-dropdown-user img {
+    width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
+  }
+  .g-dropdown-user .uname { font-weight: 600; color: var(--text); font-family: var(--sans); }
+  .g-dropdown-user .uemail { color: var(--muted); font-family: var(--mono); font-size: 0.65rem; }
+  .g-dropdown-item {
+    padding: 9px 14px; font-size: 0.72rem; cursor: pointer;
+    color: var(--text); font-family: var(--sans);
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.12s;
+  }
+  .g-dropdown-item:hover { background: var(--surface); }
+  .g-dropdown-item.danger { color: var(--error); }
+  .g-dropdown-signin {
+    padding: 12px 14px; font-size: 0.72rem; font-family: var(--sans);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .g-dropdown-signin p { color: var(--muted); line-height: 1.5; }
+  #googleSignInDiv { display: flex; justify-content: center; }
+
+  .g-wrapper { position: relative; }
 
   /* ── WORKSPACE ── */
   .workspace {
@@ -128,26 +193,21 @@
     font-size: 0.63rem; font-family: var(--mono); color: var(--muted);
     text-transform: uppercase; letter-spacing: 0.07em;
     display: flex; align-items: center; justify-content: space-between;
-    flex-shrink: 0;
+    flex-shrink: 0; gap: 4px;
   }
 
-  .collapse-btn {
+  /* ── COLLAPSE + UPLOAD ICON BUTTONS ── */
+  .collapse-btn, .upload-btn {
     background: none; border: none; cursor: pointer;
     color: var(--muted); font-size: 0.72rem; padding: 0 2px;
     line-height: 1; transition: color 0.15s; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
   }
-  .collapse-btn:hover { color: var(--accent); }
+  .collapse-btn:hover, .upload-btn:hover { color: var(--accent); }
+  .upload-btn svg { pointer-events: none; }
 
-  .drop-zone {
-    margin: 8px; border: 1.5px dashed var(--border2);
-    border-radius: var(--radius); padding: 12px 8px; text-align: center;
-    cursor: pointer; transition: border-color 0.2s, background 0.2s;
-    font-size: 0.67rem; color: var(--muted); font-family: var(--mono); flex-shrink: 0;
-  }
-  .drop-zone:hover, .drop-zone.dragover {
-    border-color: var(--accent); background: #eff6ff; color: var(--accent);
-  }
-  .drop-zone svg { display: block; margin: 0 auto 5px; opacity: 0.45; }
+  .panel-actions { display: flex; align-items: center; gap: 2px; }
+
   #fileInput { display: none; }
 
   .file-list { flex: 1; overflow-y: auto; padding: 3px 5px; }
@@ -171,6 +231,16 @@
     font-size: 0.57rem; padding: 1px 4px; border-radius: 3px;
     background: var(--surface2); color: var(--muted); white-space: nowrap; flex-shrink: 0;
   }
+
+  /* ── DROP OVERLAY (replaces old drop-zone) ── */
+  .drop-overlay {
+    position: fixed; inset: 0; background: rgba(37,99,235,0.08);
+    border: 2px dashed var(--accent); z-index: 9999;
+    display: none; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 0.9rem; color: var(--accent);
+    pointer-events: none;
+  }
+  .drop-overlay.active { display: flex; }
 
   .no-files { padding: 12px 8px; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); text-align: center; }
   .file-hint { padding: 6px 10px 8px; font-family: var(--mono); font-size: 0.6rem; color: var(--muted); border-top: 1px solid var(--border); flex-shrink: 0; line-height: 1.6; }
@@ -229,6 +299,9 @@
 </head>
 <body>
 
+<!-- Drop overlay (full-window drag target) -->
+<div class="drop-overlay" id="dropOverlay">&#8679; Drop files to upload</div>
+
 <header>
   <div class="logo">
     XeLaTeX Compiler
@@ -246,7 +319,42 @@
     </div>
     <span class="shortcut">Ctrl+Enter</span>
     <div class="status" id="status">idle</div>
+
+    <!-- ZIP download button -->
+    <button class="btn btn-zip" id="downloadZipBtn" title="Download all files as ZIP">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+        <rect x="9" y="2" width="2" height="2" rx="0.3" fill="currentColor" stroke="none"/>
+        <rect x="13" y="4" width="2" height="2" rx="0.3" fill="currentColor" stroke="none"/>
+        <rect x="9" y="6" width="2" height="2" rx="0.3" fill="currentColor" stroke="none"/>
+      </svg>
+      .zip
+    </button>
+
+    <!-- PDF download -->
     <button class="btn btn-dl" id="downloadPdfBtn">&#8595; PDF</button>
+
+    <!-- Google account icon -->
+    <div class="g-wrapper">
+      <button class="btn-google" id="googleBtn" title="Sign in with Google" onclick="toggleGoogleDropdown()">
+        <!-- Default G icon (signed out) -->
+        <svg class="g-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="var(--border2)" stroke-width="1.5"/>
+          <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="var(--muted)"/>
+          <path d="M12 14c-3.3 0-6 1.3-6 3v.5h12V17c0-1.7-2.7-3-6-3z" fill="var(--muted)"/>
+        </svg>
+        <!-- Avatar (signed in) -->
+        <img class="g-avatar" id="googleAvatar" src="" alt="avatar">
+      </button>
+
+      <!-- Dropdown -->
+      <div class="g-dropdown" id="googleDropdown">
+        <!-- Content injected by JS -->
+      </div>
+    </div>
+
     <button class="btn btn-compile" id="compileBtn" onclick="compile()">&#9654; Compile</button>
   </div>
 </header>
@@ -257,22 +365,30 @@
   <div class="file-panel">
     <div class="pane-header">
       <span class="panel-title">files &nbsp;<span id="fileCount">0</span></span>
-      <button class="collapse-btn" id="collapseBtn" title="Toggle file panel" onclick="toggleFilePanel()">&#9664;</button>
+      <div class="panel-actions">
+        <!-- Upload icon button (simple, like collapse btn) -->
+        <button class="upload-btn" id="uploadBtn" title="Upload files"
+                onclick="document.getElementById('fileInput').click()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 16 12 12 8 16"/>
+            <line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+        </button>
+        <button class="collapse-btn" id="collapseBtn" title="Toggle file panel"
+                onclick="toggleFilePanel()">&#9664;</button>
+      </div>
     </div>
-    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
-      </svg>
-      Drop files here<br>or click to browse
-    </div>
+
     <input type="file" id="fileInput" multiple
       accept=".tex,.sty,.cls,.bib,.png,.jpg,.jpeg,.eps,.tikz,.def,.cfg,.ldf,.bbx,.cbx">
+
     <div class="file-list" id="fileList">
       <div class="no-files">No support files uploaded</div>
     </div>
-    <div class="file-hint">Click file &#8594; load in editor<br>&#10005; &#8594; remove from list</div>
+    <div class="file-hint">Click file &#8594; load in editor<br>&#10005; &#8594; remove &nbsp;|&nbsp; drag anywhere to upload</div>
   </div>
 
   <!-- EDITOR -->
@@ -309,6 +425,10 @@
 </div>
 
 <script>
+// ── CONFIG ────────────────────────────────────────────
+// Replace with your Google OAuth Client ID to enable sign-in
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+
 const API_URL = 'https://latex.ytotech.com/builds/sync';
 
 // ── state ─────────────────────────────────────────────
@@ -318,6 +438,7 @@ let lastPdfBlob = null;
 let lastLogText = null;
 let lastLogName = 'output.log';
 let filesPanelOpen = true;
+let googleUser  = null;
 
 // ── DOM ───────────────────────────────────────────────
 const editor         = document.getElementById('editor');
@@ -327,6 +448,7 @@ const logToolbar     = document.getElementById('logToolbar');
 const statusEl       = document.getElementById('status');
 const compileBtn     = document.getElementById('compileBtn');
 const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+const downloadZipBtn = document.getElementById('downloadZipBtn');
 const downloadLogBtn = document.getElementById('downloadLogBtn');
 const placeholder    = document.getElementById('placeholder');
 const lineCount      = document.getElementById('lineCount');
@@ -337,10 +459,13 @@ const mainNameEl     = document.getElementById('mainName');
 const compilerEl     = document.getElementById('compiler');
 const fileListEl     = document.getElementById('fileList');
 const fileCountEl    = document.getElementById('fileCount');
-const dropZone       = document.getElementById('dropZone');
 const fileInput      = document.getElementById('fileInput');
 const workspace      = document.getElementById('workspace');
 const collapseBtn    = document.getElementById('collapseBtn');
+const dropOverlay    = document.getElementById('dropOverlay');
+const googleBtn      = document.getElementById('googleBtn');
+const googleAvatar   = document.getElementById('googleAvatar');
+const googleDropdown = document.getElementById('googleDropdown');
 
 // ── collapse ──────────────────────────────────────────
 function toggleFilePanel() {
@@ -401,10 +526,14 @@ function updateLineCount() {
 
 // ── file upload ───────────────────────────────────────
 fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
-dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault(); dropZone.classList.remove('dragover');
+
+// Full-window drag & drop
+let dragCounter = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); dragCounter++; dropOverlay.classList.add('active'); });
+document.addEventListener('dragleave', () => { dragCounter--; if (dragCounter <= 0) { dragCounter = 0; dropOverlay.classList.remove('active'); } });
+document.addEventListener('dragover',  e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault(); dragCounter = 0; dropOverlay.classList.remove('active');
   addFiles(e.dataTransfer.files);
 });
 
@@ -417,12 +546,12 @@ function addFiles(fileObjs) {
         uploadedFiles[f.name] = { file: f, content: ev.target.result };
         if (f.name.endsWith('.tex') && mainNameEl.value === 'doc.tex')
           mainNameEl.value = f.name;
-        renderFileList();
+        renderFileList(); updateZipBtn();
       };
       r.readAsText(f);
     } else {
       uploadedFiles[f.name] = { file: f, content: null };
-      renderFileList();
+      renderFileList(); updateZipBtn();
     }
   }
 }
@@ -445,7 +574,7 @@ function removeFile(name, event) {
   event.stopPropagation();
   delete uploadedFiles[name];
   if (activeFile === name) { activeFile = null; editorLabel.textContent = 'editor \u2014 doc.tex'; }
-  renderFileList();
+  renderFileList(); updateZipBtn();
 }
 
 function renderFileList() {
@@ -467,6 +596,11 @@ function renderFileList() {
   }).join('');
 }
 mainNameEl.addEventListener('input', renderFileList);
+
+function updateZipBtn() {
+  const hasAnything = Object.keys(uploadedFiles).length > 0 || lastPdfBlob;
+  downloadZipBtn.classList.toggle('show', hasAnything);
+}
 
 // ── compile ───────────────────────────────────────────
 async function compile() {
@@ -529,12 +663,14 @@ async function compile() {
       setStatus('success', '\u2713 success');
       previewLabel.textContent = 'preview \u2014 output.pdf';
       downloadPdfBtn.classList.add('show');
+      updateZipBtn();
 
       if (logUrl) {
         fetch(logUrl).then(r => r.text()).then(t => {
           lastLogText = t;
           lastLogName = 'output.log';
           logToolbar.classList.add('visible');
+          updateZipBtn();
         }).catch(() => {});
       }
 
@@ -554,6 +690,7 @@ async function compile() {
       logToolbar.classList.add('visible');
       setStatus('error', '\u2717 error');
       previewLabel.textContent = 'compile log';
+      updateZipBtn();
     }
 
   } catch (err) {
@@ -566,6 +703,7 @@ async function compile() {
     logToolbar.classList.add('visible');
     setStatus('error', '\u2717 network error');
     previewLabel.textContent = 'error';
+    updateZipBtn();
   }
 
   compileBtn.disabled = false;
@@ -581,6 +719,48 @@ downloadLogBtn.addEventListener('click', () => {
   triggerDownload(new Blob([lastLogText], {type:'text/plain'}), lastLogName);
 });
 
+// ── ZIP download ──────────────────────────────────────
+downloadZipBtn.addEventListener('click', async () => {
+  if (typeof JSZip === 'undefined') {
+    alert('JSZip not loaded. Please check your internet connection.');
+    return;
+  }
+  const zip = new JSZip();
+
+  // Main editor source
+  const mainName = mainNameEl.value || 'doc.tex';
+  zip.file(mainName, editor.value);
+
+  // Uploaded support files
+  for (const [name, entry] of Object.entries(uploadedFiles)) {
+    if (name === mainName) continue; // avoid double
+    if (entry.content !== null) {
+      zip.file(name, entry.content);
+    } else {
+      // binary — read as arraybuffer
+      try {
+        const ab = await entry.file.arrayBuffer();
+        zip.file(name, ab);
+      } catch(e) { /* skip unreadable */ }
+    }
+  }
+
+  // PDF
+  if (lastPdfBlob) {
+    const pdfName = mainName.replace('.tex', '') + '.pdf';
+    zip.file(pdfName, lastPdfBlob);
+  }
+
+  // Log
+  if (lastLogText) {
+    zip.file(lastLogName, lastLogText);
+  }
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const zipName = (mainName.replace('.tex','') || 'latex-project') + '.zip';
+  triggerDownload(blob, zipName);
+});
+
 function triggerDownload(blob, filename) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -592,6 +772,99 @@ function setStatus(cls, text) {
   statusEl.className = 'status ' + cls;
   statusEl.textContent = text;
 }
+
+// ── GOOGLE SIGN-IN ────────────────────────────────────
+function renderGoogleDropdown() {
+  if (googleUser) {
+    googleDropdown.innerHTML = `
+      <div class="g-dropdown-user">
+        <img src="${googleUser.picture}" alt="avatar">
+        <div>
+          <div class="uname">${googleUser.name}</div>
+          <div class="uemail">${googleUser.email}</div>
+        </div>
+      </div>
+      <div class="g-dropdown-item" onclick="saveToAccount()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save current project
+      </div>
+      <div class="g-dropdown-item" onclick="signOutGoogle()" style="border-top:1px solid var(--border)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sign out
+      </div>
+    `;
+  } else {
+    const isConfigured = !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE');
+    googleDropdown.innerHTML = `
+      <div class="g-dropdown-signin">
+        <p>Sign in to save projects to your Google account.</p>
+        ${isConfigured
+          ? `<div id="googleSignInDiv"></div>`
+          : `<p style="color:var(--warn);font-size:0.65rem;">⚠ Set GOOGLE_CLIENT_ID in the script to enable sign-in.</p>`
+        }
+      </div>
+    `;
+    if (isConfigured) {
+      google.accounts.id.renderButton(
+        document.getElementById('googleSignInDiv'),
+        { theme: 'outline', size: 'medium', text: 'signin_with' }
+      );
+    }
+  }
+}
+
+function toggleGoogleDropdown() {
+  const isOpen = googleDropdown.classList.toggle('open');
+  if (isOpen) renderGoogleDropdown();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+  if (!document.querySelector('.g-wrapper').contains(e.target)) {
+    googleDropdown.classList.remove('open');
+  }
+});
+
+function handleGoogleCredential(response) {
+  // Decode JWT payload
+  const payload = JSON.parse(atob(response.credential.split('.')[1]));
+  googleUser = {
+    name:    payload.name,
+    email:   payload.email,
+    picture: payload.picture,
+    sub:     payload.sub
+  };
+  googleAvatar.src = payload.picture;
+  googleBtn.classList.add('signed-in');
+  renderGoogleDropdown();
+}
+
+function signOutGoogle() {
+  googleUser = null;
+  googleAvatar.src = '';
+  googleBtn.classList.remove('signed-in');
+  googleDropdown.classList.remove('open');
+  if (typeof google !== 'undefined') {
+    google.accounts.id.disableAutoSelect();
+  }
+}
+
+function saveToAccount() {
+  // Placeholder — wire up to your backend/storage
+  alert(`Project saved for ${googleUser.name}!\n(Connect to your backend to persist data.)`);
+  googleDropdown.classList.remove('open');
+}
+
+// Initialise Google Identity Services
+window.addEventListener('load', () => {
+  if (typeof google !== 'undefined' && !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE')) {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback:  handleGoogleCredential,
+      auto_select: false
+    });
+  }
+});
 </script>
 </body>
 </html>
