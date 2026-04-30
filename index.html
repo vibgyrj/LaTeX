@@ -478,28 +478,23 @@ function toggleFilePanel() {
 
 // ── default template ──────────────────────────────────
 editor.value = `\\documentclass{article}
+
+\\usepackage{algorithm}
+\\usepackage{algpseudocode}
+
 \\usepackage{fontspec}
 \\usepackage{amsmath}
 
-
-\\title{LaTeX Online Compiler}
-\\author{Your Name}
-\\date{\\today}
-
 \\begin{document}
-\\maketitle
 
-\\section{Introduction}
-This document is compiled using \\textbf{XeLaTeX} via a free online API.
+\\algrenewcommand\\alglinenumber[1]{#1}
 
-\\section{Math Example}
-A well-known identity:
-\\[
-  e^{i\\pi} + 1 = 0
-\\]
-
-% To include another .tex file, upload it via the file panel and use:
-% \\input{filename}
+\\begin{algorithm}
+\\begin{algorithmic}[1]
+\\State First step
+\\State Second step
+\\end{algorithmic}
+\\end{algorithm}
 
 \\end{document}`;
 updateLineCount();
